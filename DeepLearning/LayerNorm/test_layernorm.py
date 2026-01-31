@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .layernorm import Layer_LayerNormalization
+from layernorm import Layer_LayerNormalization
 
 
 def numerical_grad(f, x, eps=1e-6):

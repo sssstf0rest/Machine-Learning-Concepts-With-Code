@@ -1,5 +1,6 @@
 import numpy as np
-from DNN.loss_functions import Loss_CategoricalCrossentropy
+
+from .loss_functions import Loss_CategoricalCrossentropy
 
 # ReLU activation
 class Activation_ReLU:

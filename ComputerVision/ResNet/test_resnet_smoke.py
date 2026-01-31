@@ -1,6 +1,6 @@
 import numpy as np
 
-from ResNet.resnet18_numpy import ResNet18MNIST
+from ResNet18 import ResNet18MNIST
 
 
 def test_forward_shapes():

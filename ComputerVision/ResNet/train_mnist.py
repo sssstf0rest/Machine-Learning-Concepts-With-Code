@@ -12,12 +12,19 @@ from __future__ import annotations
 
 import argparse
 import numpy as np
+from pathlib import Path
+import sys
 
-from DNN.activation_functions import Activation_Softmax_Loss_CategoricalCrossentropy
-from DNN.optimizers import Optimizer_Adam
+# Resolve repo root (…/Machine-Learning-Concepts-With-Code)
+repo_root = Path.cwd().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
-from ResNet.mnist_data import load_mnist
-from ResNet.resnet18_numpy import ResNet18MNIST
+from DeepLearning.DNN.activation_functions import Activation_Softmax_Loss_CategoricalCrossentropy
+from DeepLearning.DNN.optimizers import Optimizer_Adam
+
+from ComputerVision.ResNet.mnist_data import load_mnist
+from ComputerVision.ResNet.ResNet18 import ResNet18MNIST
 
 
 def iterate_minibatches(X, y, batch_size, shuffle=True, seed=0):

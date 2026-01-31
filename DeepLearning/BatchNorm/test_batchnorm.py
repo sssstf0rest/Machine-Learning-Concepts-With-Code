@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .batchnorm import Layer_BatchNormalization
+from batchnorm import Layer_BatchNormalization
 
 
 def numerical_grad(f, x, eps=1e-6):
