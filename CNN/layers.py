@@ -18,9 +18,10 @@ import numpy as np
 
 def get_im2col_indices(x_shape, field_height, field_width, padding, stride):
     N, C, H, W = x_shape
-    assert (H + 2 * padding - field_height) % stride == 0
-    assert (W + 2 * padding - field_width) % stride == 0
 
+    # Allow non-divisible sizes by using floor output sizing.
+    # This matches common conv behavior and avoids assertion errors
+    # for inputs like 28x28 with K=3, P=1, S=2.
     out_height = (H + 2 * padding - field_height) // stride + 1
     out_width = (W + 2 * padding - field_width) // stride + 1
 

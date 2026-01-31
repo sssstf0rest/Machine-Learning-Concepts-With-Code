@@ -13,8 +13,15 @@ from __future__ import annotations
 
 import numpy as np
 
+from pathlib import Path
+import sys
+
+repo_root = Path.cwd().parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
 from CNN.layers import Layer_Conv2D_Im2Col, Layer_MaxPool2D, Layer_Flatten
-from DNN.Neuron import Layer_Dense
+from DNN.neuron import Layer_Dense
 from DNN.activation_functions import Activation_ReLU
 
 
