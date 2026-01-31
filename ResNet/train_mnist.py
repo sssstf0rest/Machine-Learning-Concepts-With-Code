@@ -1,131 +1,96 @@
-"""Train ResNet-18 style (scratch) on MNIST.
+"""Train ResNet-18 (NumPy) on MNIST.
 
-Run (from repo root):
-  python -m ResNet.train_mnist --epochs 1 --subset 5000
+Uses:
+- CNN.layers (Conv/Flatten)
+- DNN.* (Dense, activations, loss, optimizers)
 
-This is intended to run quickly on CPU for demonstration.
+Run (CPU):
+  python3 -m ResNet.train_mnist --epochs 1 --subset 5000 --batch-size 64
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
-from typing import Tuple
+import numpy as np
 
-import torch
-from torch.utils.data import DataLoader, Subset
+from DNN.activation_functions import Activation_Softmax_Loss_CategoricalCrossentropy
+from DNN.optimizers import Optimizer_Adam
 
-try:
-    from torchvision import datasets, transforms
-except Exception as e:  # pragma: no cover
-    raise RuntimeError(
-        "torchvision is required for MNIST in this demo. Install: pip install torchvision"
-    ) from e
-
-from .resnet18_scratch import ResNet18Scratch, set_seed, sgd_step, accuracy
+from ResNet.mnist_data import load_mnist
+from ResNet.resnet18_numpy import ResNet18MNIST
 
 
-@dataclass
-class TrainConfig:
-    seed: int = 0
-    epochs: int = 1
-    batch_size: int = 128
-    lr: float = 0.05
-    weight_decay: float = 0.0
-    subset: int = 5000
-    data_dir: str = "./data"
-    device: str = "cpu"
-    log_every: int = 50
+def iterate_minibatches(X, y, batch_size, shuffle=True, seed=0):
+    n = X.shape[0]
+    idx = np.arange(n)
+    if shuffle:
+        rng = np.random.default_rng(seed)
+        rng.shuffle(idx)
+    for start in range(0, n, batch_size):
+        batch_idx = idx[start : start + batch_size]
+        yield X[batch_idx], y[batch_idx]
 
 
-def get_loaders(cfg: TrainConfig) -> Tuple[DataLoader, DataLoader]:
-    tfm = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,)),
-        ]
-    )
-
-    train_ds = datasets.MNIST(cfg.data_dir, train=True, download=True, transform=tfm)
-    test_ds = datasets.MNIST(cfg.data_dir, train=False, download=True, transform=tfm)
-
-    if cfg.subset and cfg.subset < len(train_ds):
-        train_ds = Subset(train_ds, list(range(cfg.subset)))
-
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
-    test_loader = DataLoader(test_ds, batch_size=cfg.batch_size, shuffle=False, num_workers=0)
-    return train_loader, test_loader
-
-
-@torch.no_grad()
-def evaluate(model: ResNet18Scratch, loader: DataLoader, device: torch.device) -> float:
-    model_acc = 0.0
-    n = 0
-    for x, y in loader:
-        x = x.to(device)
-        y = y.to(device)
-        logits = model.forward(x, training=False)
-        model_acc += accuracy(logits, y) * x.shape[0]
-        n += x.shape[0]
-    return model_acc / n
+def accuracy(pred_probs, y_true):
+    y_pred = np.argmax(pred_probs, axis=1)
+    return (y_pred == y_true).mean()
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--epochs", type=int, default=1)
-    p.add_argument("--batch-size", type=int, default=128)
-    p.add_argument("--lr", type=float, default=0.05)
-    p.add_argument("--weight-decay", type=float, default=0.0)
-    p.add_argument("--subset", type=int, default=5000)
-    p.add_argument("--data-dir", type=str, default="./data")
-    p.add_argument("--device", type=str, default="cpu")
-    p.add_argument("--log-every", type=int, default=50)
-    args = p.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--epochs', type=int, default=1)
+    ap.add_argument('--batch-size', type=int, default=64)
+    ap.add_argument('--lr', type=float, default=1e-3)
+    ap.add_argument('--subset', type=int, default=0, help='Use first N training samples (0 = full)')
+    ap.add_argument('--seed', type=int, default=0)
+    args = ap.parse_args()
 
-    cfg = TrainConfig(**vars(args))
+    (x_train, y_train), (x_test, y_test) = load_mnist()
 
-    set_seed(cfg.seed)
+    if args.subset and args.subset > 0:
+        x_train = x_train[: args.subset]
+        y_train = y_train[: args.subset]
 
-    device = torch.device(cfg.device)
-    train_loader, test_loader = get_loaders(cfg)
+    model = ResNet18MNIST(num_classes=10)
+    loss_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
+    optimizer = Optimizer_Adam(learning_rate=args.lr)
 
-    model = ResNet18Scratch(num_classes=10, in_channels=1, device=device)
-    params = model.parameters()
+    trainable = model.trainable_layers()
 
-    for epoch in range(1, cfg.epochs + 1):
-        model_loss = 0.0
-        model_acc = 0.0
-        n = 0
+    for epoch in range(1, args.epochs + 1):
+        optimizer.pre_update_params()
 
-        for step, (x, y) in enumerate(train_loader, start=1):
-            x = x.to(device)
-            y = y.to(device)
+        losses = []
+        accs = []
 
-            logits = model.forward(x, training=True)
-            loss = torch.nn.functional.cross_entropy(logits, y)
+        for xb, yb in iterate_minibatches(x_train, y_train, args.batch_size, shuffle=True, seed=args.seed + epoch):
+            model.forward(xb, training=True)
+            loss = loss_activation.forward(model.output, yb)
 
-            model.zero_grad()
-            loss.backward()
-            sgd_step(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+            # Accuracy
+            acc = accuracy(loss_activation.output, yb)
 
-            with torch.no_grad():
-                bs = x.shape[0]
-                model_loss += float(loss.item()) * bs
-                model_acc += accuracy(logits, y) * bs
-                n += bs
+            # Backward
+            loss_activation.backward(loss_activation.output, yb)
+            model.backward(loss_activation.dinputs)
 
-            if cfg.log_every and step % cfg.log_every == 0:
-                print(
-                    f"epoch {epoch}/{cfg.epochs} step {step}/{len(train_loader)} "
-                    f"loss={model_loss/n:.4f} acc={model_acc/n:.4f}"
-                )
+            # Update
+            for layer in trainable:
+                if hasattr(layer, 'weights') and hasattr(layer, 'dweights'):
+                    optimizer.update_params(layer)
 
-        train_loss = model_loss / n
-        train_acc = model_acc / n
-        test_acc = evaluate(model, test_loader, device)
-        print(f"epoch {epoch}: train_loss={train_loss:.4f} train_acc={train_acc:.4f} test_acc={test_acc:.4f}")
+            losses.append(loss)
+            accs.append(acc)
+
+        optimizer.post_update_params()
+
+        # Eval (quick): run on first 2000 test samples
+        model.forward(x_test[:2000], training=False)
+        loss_activation.activation.forward(model.output)
+        test_acc = accuracy(loss_activation.activation.output, y_test[:2000])
+
+        print(f"Epoch {epoch}: loss={float(np.mean(losses)):.4f} acc={float(np.mean(accs)):.4f} test_acc@2k={float(test_acc):.4f}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

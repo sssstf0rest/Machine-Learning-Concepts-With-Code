@@ -1,1 +1,1 @@
-from .resnet18_scratch import ResNet18Scratch
+from .resnet18_numpy import ResNet18MNIST
